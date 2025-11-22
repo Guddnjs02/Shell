@@ -1,0 +1,14 @@
+# Compiled binaries and object files
+*.o
+*.out
+final_shell
+mmap_copy
+chat_mq
+dbus_server
+dbus_client
+ls_recursive
+typing_test
+
+# Temporary files
+*~
+*.swp
