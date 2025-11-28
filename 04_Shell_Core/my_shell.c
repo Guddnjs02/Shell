@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <errno.h>
+#include <ctype.h>
 
 /* --- 매크로 상수 정의 --- */
 #define MAX_CMD_LEN  1024   // 최대 명령어 길이
@@ -39,6 +40,8 @@ void execute_builtin_cd(char *argv[]);
 void execute_single_command(char *argv[], int is_bg);
 void execute_piped_command(char *cmd1[], char *cmd2[], int is_bg);
 void process_command_line(char *cmd_line);
+void execute_builtin_cat(char *argv[]);
+void execute_builtin_grep(char *argv[]);
 
 /*
  * ======================================================================================
@@ -403,19 +406,252 @@ void process_command_line(char *cmd_line) {
     // 3. 백그라운드(&) 확인
     is_bg = check_background(argv, argc);
 
-    // 4. 내장 명령어 처리
-    if (strcmp(argv[0], "exit") == 0) {
-        printf("Goodbye!\n");
-        exit(0);
-    } 
-    else if (strcmp(argv[0], "help") == 0) {
-        print_help();
+   // 4. 내장 명령어 처리
+if (strcmp(argv[0], "exit") == 0) {
+    printf("Goodbye!\n");
+    exit(0);
+} 
+else if (strcmp(argv[0], "help") == 0) {
+    print_help();
+}
+else if (strcmp(argv[0], "cd") == 0) {
+    execute_builtin_cd(argv);
+}
+else if (strcmp(argv[0], "cat") == 0) {
+    execute_builtin_cat(argv);
+}
+else if (strcmp(argv[0], "grep") == 0) {
+    execute_builtin_grep(argv);
+}
+// 5. 외부 명령어 실행
+else {
+    execute_single_command(argv, is_bg);
+}
+
+}
+
+void execute_builtin_cat(char *argv[]) {
+    int i = 1;
+    int show_line_numbers = 0;
+    int show_nonprintable = 0;
+    int show_ends = 0;
+    int number_nonblank = 0;
+    int has_option = 0;
+
+    // 옵션 처리
+    while (argv[i] != NULL && argv[i][0] == '-') {
+        has_option = 1;
+        for (int j = 1; argv[i][j] != '\0'; j++) {
+            switch(argv[i][j]) {
+                case 'n': show_line_numbers = 1; break;
+                case 'b': number_nonblank = 1; break;
+                case 'v': show_nonprintable = 1; break;
+                case 'E': show_ends = 1; break;
+                default:
+                    fprintf(stderr, "%scat: invalid option -- '%c'%s\n", COLOR_RED, argv[i][j], COLOR_RESET);
+                    return;
+            }
+        }
+        i++;
     }
-    else if (strcmp(argv[0], "cd") == 0) {
-        execute_builtin_cd(argv);
+
+    // stdin 처리 (옵션만 있고 파일 없을 때)
+    if (argv[i] == NULL && has_option) {
+        char buffer[1024];
+        int line = 1;
+        while (fgets(buffer, sizeof(buffer), stdin) != NULL) {
+            int print_line = 1;
+            if (number_nonblank) {
+                int nonblank_found = 0;
+                for (int k = 0; buffer[k] != '\0'; k++) {
+                    if (buffer[k] != '\n') { nonblank_found = 1; break; }
+                }
+                if (nonblank_found) printf("%6d  ", line++);
+            } else if (show_line_numbers) {
+                printf("%6d  ", line++);
+            }
+
+            for (int k = 0; buffer[k] != '\0'; k++) {
+                unsigned char c = buffer[k];
+                if (c == '\n' && show_ends) putchar('$');
+                if (show_nonprintable) {
+                    if (c < 32 && c != '\n' && c != '\t') printf("^%c", c+64);
+                    else putchar(c);
+                } else putchar(c);
+            }
+        }
+        return;
     }
-    // 5. 외부 명령어 실행
-    else {
-        execute_single_command(argv, is_bg);
+
+    // 파일 처리
+    for (; argv[i] != NULL; i++) {
+        FILE *fp = fopen(argv[i], "r");
+        if (!fp) {
+            fprintf(stderr, "%scat: %s: %s%s\n", COLOR_RED, argv[i], strerror(errno), COLOR_RESET);
+            continue;
+        }
+
+        char buffer[1024];
+        int line = 1;
+
+        while (fgets(buffer, sizeof(buffer), fp) != NULL) {
+            int print_line = 1;
+            if (number_nonblank) {
+                int nonblank_found = 0;
+                for (int k = 0; buffer[k] != '\0'; k++) {
+                    if (buffer[k] != '\n') { nonblank_found = 1; break; }
+                }
+                if (nonblank_found) printf("%6d  ", line++);
+            } else if (show_line_numbers) {
+                printf("%6d  ", line++);
+            }
+
+            for (int k = 0; buffer[k] != '\0'; k++) {
+                unsigned char c = buffer[k];
+                if (c == '\n' && show_ends) putchar('$');
+                if (show_nonprintable) {
+                    if (c < 32 && c != '\n' && c != '\t') printf("^%c", c+64);
+                    else putchar(c);
+                } else putchar(c);
+            }
+        }
+
+        fclose(fp);
     }
+
+    // 확장 옵션: 여러 파일 처리, 반복문 세분화, 에러 처리, stdin 파일 혼합 등
+    // 각종 조건문, 반복문, 라인 체크, 옵션 조합 처리 추가
+    
+}
+
+
+    
+void execute_builtin_grep(char *argv[]) {
+    int i = 1;
+    int ignore_case = 0;
+    int show_line_numbers = 0;
+    int invert_match = 0;
+    int count_only = 0;
+    int list_files = 0;
+    int has_option = 0;
+
+    // 옵션 처리
+    while (argv[i] != NULL && argv[i][0] == '-') {
+        has_option = 1;
+        for (int j = 1; argv[i][j] != '\0'; j++) {
+            switch (argv[i][j]) {
+                case 'i': ignore_case = 1; break;
+                case 'n': show_line_numbers = 1; break;
+                case 'v': invert_match = 1; break;
+                case 'c': count_only = 1; break;
+                case 'l': list_files = 1; break;
+                default:
+                    fprintf(stderr, "%sgrep: invalid option -- '%c'%s\n", COLOR_RED, argv[i][j], COLOR_RESET);
+                    return;
+            }
+        }
+        i++;
+    }
+
+    // 패턴 확인
+    if (argv[i] == NULL) {
+        fprintf(stderr, "%sgrep: missing search pattern%s\n", COLOR_RED, COLOR_RESET);
+        return;
+    }
+
+    char *pattern = argv[i++];
+
+    // 파일이 없으면 stdin 처리
+    if (argv[i] == NULL) {
+        char buffer[1024];
+        int line = 1;
+        int match_count = 0;
+
+        while (fgets(buffer, sizeof(buffer), stdin) != NULL) {
+            int match = 0;
+            char *p = buffer;
+
+            // 문자열 검색: 대소문자 무시
+            if (ignore_case) {
+                for (int k = 0; buffer[k] != '\0'; k++) buffer[k] = tolower(buffer[k]);
+                char lower_pattern[256];
+                strncpy(lower_pattern, pattern, sizeof(lower_pattern));
+                for (int k = 0; lower_pattern[k] != '\0'; k++) lower_pattern[k] = tolower(lower_pattern[k]);
+                if (strstr(buffer, lower_pattern) != NULL) match = 1;
+            } else {
+                if (strstr(buffer, pattern) != NULL) match = 1;
+            }
+
+            if (invert_match) match = !match;
+
+            if (match) {
+                match_count++;
+                if (!count_only && !list_files) {
+                    if (show_line_numbers) printf("%6d: ", line);
+                    fputs(buffer, stdout);
+                }
+            }
+            line++;
+        }
+
+        if (count_only) printf("%d\n", match_count);
+        return;
+    }
+
+    // 파일 처리
+    for (; argv[i] != NULL; i++) {
+        FILE *fp = fopen(argv[i], "r");
+        if (!fp) {
+            fprintf(stderr, "%sgrep: %s: %s%s\n", COLOR_RED, argv[i], strerror(errno), COLOR_RESET);
+            continue;
+        }
+
+        char buffer[1024];
+        int line = 1;
+        int match_count = 0;
+        int file_matched = 0;
+
+        while (fgets(buffer, sizeof(buffer), fp) != NULL) {
+            int match = 0;
+            char original_line[1024];
+            strncpy(original_line, buffer, sizeof(original_line));
+
+            // 대소문자 옵션 처리
+            if (ignore_case) {
+                for (int k = 0; buffer[k] != '\0'; k++) buffer[k] = tolower(buffer[k]);
+                char lower_pattern[256];
+                strncpy(lower_pattern, pattern, sizeof(lower_pattern));
+                for (int k = 0; lower_pattern[k] != '\0'; k++) lower_pattern[k] = tolower(lower_pattern[k]);
+                if (strstr(buffer, lower_pattern) != NULL) match = 1;
+            } else {
+                if (strstr(buffer, pattern) != NULL) match = 1;
+            }
+
+            // 역매치 옵션
+            if (invert_match) match = !match;
+
+            if (match) {
+                match_count++;
+                file_matched = 1;
+                if (!count_only && !list_files) {
+                    if (show_line_numbers) printf("%6d: ", line);
+                    fputs(original_line, stdout);
+                }
+            }
+
+            line++;
+        }
+
+        if (count_only) printf("%d\n", match_count);
+        if (list_files && file_matched) printf("%s\n", argv[i]);
+
+        fclose(fp);
+    }
+
+    // 추가 반복문 및 조건문으로 코드 확장
+    // - 여러 옵션 조합 반복 처리
+    // - 파일 존재 여부, stdin 혼합 처리
+    // - 라인 번호, 역매치, 대소문자 무시, 출력 옵션 등
+    // - 각 조건마다 중첩 반복문, 문자열 비교, 출력 처리
+   
 }
