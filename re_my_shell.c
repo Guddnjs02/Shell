@@ -41,6 +41,10 @@ void execute_piped_command(char *cmd1[], char *cmd2[], int is_bg);
 void process_command_line(char *cmd_line);
 void execute_builtin_cat(char *argv[]);
 void execute_builtin_grep(char *argv[]);
+void execute_builtin_cp(char* argv[]);
+void execute_builtin_ln(char* argv[]);
+void execute_builtin_mv(char* argv[]);
+void execute_builtin_rm(char* argv[]);
 
 /*
  * ======================================================================================
@@ -422,10 +426,23 @@ else if (strcmp(argv[0], "cat") == 0) {
 else if (strcmp(argv[0], "grep") == 0) {
     execute_builtin_grep(argv);
 }
+else if (strcmp(argv[0], "cp") == 0) {
+    execute_builtin_cp(argv);
+}
+else if (strcmp(argv[0], "ln") == 0) {
+    execute_builtin_ln(argv);
+}
+else if (strcmp(argv[0], "mv") == 0) {
+    execute_builtin_mv(argv);
+}
+else if (strcmp(argv[0], "rm") == 0) {
+    execute_builtin_rm(argv);
+}
 // 5. 외부 명령어 실행
 else {
     execute_single_command(argv, is_bg);
 }
+
 
 }
 
@@ -523,8 +540,97 @@ void execute_builtin_cat(char *argv[]) {
     
 }
 
+/*
+ * cp (Copy) 구현
+ * 사용법: cp <source> <destination>
+ */
+void execute_builtin_cp(char* argv[]) {
+    if (argv[1] == NULL || argv[2] == NULL) {
+        fprintf(stderr, "%scp: missing file operand%s\n", COLOR_RED, COLOR_RESET);
+        return;
+    }
 
+    int src_fd = open(argv[1], O_RDONLY);
+    if (src_fd < 0) {
+        perror("cp: source open error");
+        return;
+    }
+
+    // 대상 파일 열기 (쓰기전용 | 없으면생성 | 있으면내용삭제, 권한 0644)
+    int dst_fd = open(argv[2], O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (dst_fd < 0) {
+        perror("cp: dest open error");
+        close(src_fd);
+        return;
+    }
+
+    char buf[4096];
+    ssize_t nread;
+
+    // 원본에서 읽어서 대상에 쓰기 반복
+    while ((nread = read(src_fd, buf, sizeof(buf))) > 0) {
+        if (write(dst_fd, buf, nread) != nread) {
+            perror("cp: write error");
+            break;
+        }
+    }
+
+    close(src_fd);
+    close(dst_fd);
+}
     
+/*
+ * ln (Link) 구현
+ * 사용법: ln <original> <link_name>
+ */
+void execute_builtin_ln(char* argv[]) {
+    if (argv[1] == NULL || argv[2] == NULL) {
+        fprintf(stderr, "%sln: missing file operand%s\n", COLOR_RED, COLOR_RESET);
+        return;
+    }
+
+    // link 시스템 콜 사용 (하드 링크)
+    if (link(argv[1], argv[2]) < 0) {
+        perror("ln");
+    }
+}
+
+/*
+ * mv (Move/Rename) 구현
+ * 사용법: mv <old_name> <new_name>
+ */
+void execute_builtin_mv(char* argv[]) {
+    if (argv[1] == NULL || argv[2] == NULL) {
+        fprintf(stderr, "%smv: missing file operand%s\n", COLOR_RED, COLOR_RESET);
+        return;
+    }
+
+    // rename 시스템 콜 사용
+    if (rename(argv[1], argv[2]) < 0) {
+        perror("mv");
+    }
+}
+
+/*
+ * rm (Remove) 구현
+ * 사용법: rm <file1> [file2] ...
+ */
+void execute_builtin_rm(char* argv[]) {
+    if (argv[1] == NULL) {
+        fprintf(stderr, "%srm: missing operand%s\n", COLOR_RED, COLOR_RESET);
+        return;
+    }
+
+    int i = 1;
+    while (argv[i] != NULL) {
+        // unlink 시스템 콜 사용 (파일 삭제)
+        if (unlink(argv[i]) < 0) {
+            fprintf(stderr, "rm: cannot remove '%s': %s\n", argv[i], strerror(errno));
+        }
+        i++;
+    }
+}
+
 void execute_builtin_grep(char *argv[]) {
     int i = 1;
     int ignore_case = 0;
