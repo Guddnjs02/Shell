@@ -1,8 +1,0 @@
-total 24
-drwxr-xr-x 2 linux linux 4096 Nov 25 12:07 01_Rust_Intro
-drwxr-xr-x 2 linux linux 4096 Nov 25 12:07 02_File_System
-drwxr-xr-x 2 linux linux 4096 Nov 25 12:07 03_Process_IPC
-drwxr-xr-x 2 linux linux 4096 Nov 25 12:20 04_Shell_Core
--rw-r--r-- 1 linux linux 2982 Nov 25 12:07 README.md
--rw-r--r-- 1 linux linux    0 Nov 25 12:21 file_list.txt
-drwxr-xr-x 3 linux linux 4096 Nov 25 12:07 test_dir
