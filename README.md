@@ -54,6 +54,9 @@ cd Shell-main/Shell_Programming
 make
 
 # 3. 쉘 실행 (Run)
+cd Shell-main
+cd Shell_Programming
+
 gcc -o my_shell my_shell.c
 gcc -o my_ls my_ls.c
 gcc -o my_pwd my_pwd.c
